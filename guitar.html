@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Acoustic Guitar</title>
+<style>
+  :root{
+    --bg: #1d130b;
+    --wood-light: #c08e57;
+    --wood-mid: #a9763f;
+    --wood-dark: #8a5c2e;
+    --hole: #2a1708;
+    --rosette: #e0b45c;
+    --string: #f5f2ea;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{
+    width:100%; height:100%;
+    background: radial-gradient(120% 120% at 50% 40%, #241710 0%, #160d06 70%, #0e0803 100%);
+    overflow:hidden;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    touch-action: none;
+    -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .stage{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    padding: clamp(10px, 4vmin, 48px);
+  }
+  .guitar{
+    position:relative;
+    width:min(96vw, 1180px);
+    aspect-ratio: 1180 / 620;
+    max-height: 92vh;
+    border-radius: 22px;
+    background:
+      radial-gradient(60% 90% at 62% 45%, rgba(0,0,0,.22), transparent 70%),
+      repeating-linear-gradient( 178deg,
+        rgba(255,255,255,.045) 0px, rgba(255,255,255,.045) 2px,
+        transparent 2px, transparent 9px),
+      linear-gradient(173deg, var(--wood-light) 0%, var(--wood-mid) 48%, var(--wood-dark) 100%);
+    box-shadow:
+      0 0 0 1px rgba(0,0,0,.45),
+      0 24px 80px rgba(0,0,0,.65),
+      0 0 120px rgba(214,151,73,.10),
+      inset 0 2px 2px rgba(255,255,255,.18),
+      inset 0 -14px 40px rgba(0,0,0,.30);
+    overflow:hidden;
+  }
+  /* sound hole */
+  .hole{
+    position:absolute; left:50%; top:50%;
+    width:46%; aspect-ratio:1; transform:translate(-50%,-50%);
+    border-radius:50%;
+    background: radial-gradient(circle at 42% 38%, #3a2310 0%, var(--hole) 45%, #190d04 100%);
+    box-shadow:
+      inset 0 10px 40px rgba(0,0,0,.9),
+      0 0 0 6px var(--rosette),
+      0 0 0 12px #9c7340,
+      0 0 0 16px var(--rosette),
+      0 0 0 22px rgba(122,86,42,.9),
+      0 0 0 26px #d9af5e,
+      0 6px 30px 26px rgba(0,0,0,.25);
+  }
+  .strings{ position:absolute; inset:0; }
+  .string-row{
+    position:absolute; left:0; width:100%;
+    height:44px; transform:translateY(-50%);
+    cursor:pointer;
+  }
+  .label{
+    position:absolute; left:1.6%; top:50%;
+    transform:translateY(-50%);
+    z-index:2;
+    background:linear-gradient(180deg,#5a4226,#3c2a15);
+    color:#e8dcc7; font-weight:600;
+    font-size:clamp(9px,1.5vmin,14px);
+    padding:.18em .5em; border-radius:5px;
+    box-shadow:0 1px 3px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.15);
+    pointer-events:none; letter-spacing:.02em;
+  }
+  .label sub{ font-size:.7em; }
+  .wire{
+    position:absolute; left:0; top:50%; width:100%;
+    transform:translateY(-50%);
+    background:linear-gradient(180deg, #ffffff, #cfc9bd);
+    border-radius:2px;
+    box-shadow:
+      0 1px 0 rgba(0,0,0,.55),
+      0 2px 6px rgba(0,0,0,.45),
+      0 0 6px rgba(255,255,255,.35);
+    pointer-events:none;
+    will-change: transform;
+  }
+  .string-row.vibrating .wire{
+    animation: vibrate var(--vib-dur, 90ms) linear infinite;
+  }
+  @keyframes vibrate{
+    0%   { transform: translateY(calc(-50% - var(--amp, 3px))) scaleY(1); }
+    25%  { transform: translateY(-50%) scaleY(1.6); }
+    50%  { transform: translateY(calc(-50% + var(--amp, 3px))) scaleY(1); }
+    75%  { transform: translateY(-50%) scaleY(1.6); }
+    100% { transform: translateY(calc(-50% - var(--amp, 3px))) scaleY(1); }
+  }
+  .hint{
+    position:fixed; left:50%; bottom:max(10px, 2.5vh); transform:translateX(-50%);
+    color:#b89f7d; font-size:clamp(11px,1.8vmin,14px); letter-spacing:.06em;
+    opacity:.85; transition:opacity .6s; pointer-events:none; text-align:center;
+    text-shadow:0 1px 2px rgba(0,0,0,.7); white-space:nowrap;
+  }
+  .hint.hide{ opacity:0; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="guitar" id="guitar">
+    <div class="hole"></div>
+    <div class="strings" id="strings"></div>
+  </div>
+</div>
+<div class="hint" id="hint">Drag or swipe across the strings to strum &nbsp;·&nbsp; tap a string to pluck</div>
+
+<script>
+"use strict";
+
+/* ---------------- String definitions (standard tuning) ---------------- */
+const STRINGS = [
+  { name:"E", oct:2, freq: 82.41,  thick: 5.0 },
+  { name:"A", oct:2, freq:110.00,  thick: 4.4 },
+  { name:"D", oct:3, freq:146.83,  thick: 3.8 },
+  { name:"G", oct:3, freq:196.00,  thick: 3.2 },
+  { name:"B", oct:3, freq:246.94,  thick: 2.6 },
+  { name:"E", oct:4, freq:329.63,  thick: 2.0 },
+];
+// vertical positions (% of body height) matching the reference layout
+const TOP = 17.5, BOTTOM = 82.5;
+
+/* ---------------- Build DOM ---------------- */
+const stringsEl = document.getElementById("strings");
+const rows = STRINGS.map((s, i) => {
+  const y = TOP + (BOTTOM - TOP) * i / (STRINGS.length - 1);
+  const row = document.createElement("div");
+  row.className = "string-row";
+  row.style.top = y + "%";
+  row.dataset.index = i;
+
+  const label = document.createElement("div");
+  label.className = "label";
+  label.innerHTML = s.name + "<sub>" + s.oct + "</sub>";
+
+  const wire = document.createElement("div");
+  wire.className = "wire";
+  wire.style.height = s.thick + "px";
+
+  row.append(label, wire);
+  stringsEl.appendChild(row);
+  return row;
+});
+
+/* ---------------- Audio: Karplus–Strong plucked string ---------------- */
+let ctx = null, master = null, comp = null;
+
+function ensureAudio(){
+  if (ctx) { if (ctx.state === "suspended") ctx.resume(); return; }
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+
+  comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.knee.value = 24;
+  comp.ratio.value = 4; comp.attack.value = 0.002; comp.release.value = 0.25;
+
+  // simple acoustic "body" colour: two gentle resonant peaks
+  const body1 = ctx.createBiquadFilter();
+  body1.type = "peaking"; body1.frequency.value = 110; body1.Q.value = 1.1; body1.gain.value = 4.5;
+  const body2 = ctx.createBiquadFilter();
+  body2.type = "peaking"; body2.frequency.value = 220; body2.Q.value = 1.4; body2.gain.value = 3;
+  const air = ctx.createBiquadFilter();
+  air.type = "highshelf"; air.frequency.value = 5500; air.gain.value = -4;
+
+  master = ctx.createGain();
+  master.gain.value = 0.9;
+
+  master.connect(body1).connect(body2).connect(air).connect(comp).connect(ctx.destination);
+}
+
+/**
+ * Render a Karplus–Strong pluck into an AudioBuffer.
+ * Includes pick-position comb filtering, frequency-dependent damping
+ * and a slight stretch factor for a natural acoustic decay.
+ */
+function renderPluck(freq, velocity){
+  const sr = ctx.sampleRate;
+  const dur = Math.min(6, 1.2 + 220 / freq * 2.2);   // low strings ring longer
+  const n = Math.floor(sr * dur);
+  const buf = ctx.createBuffer(1, n, sr);
+  const out = buf.getChannelData(0);
+
+  const period = Math.round(sr / freq);
+  const delay = new Float32Array(period);
+
+  // --- excite: noise burst, lowpassed by velocity (soft pluck = darker) ---
+  let lp = 0;
+  const bright = 0.35 + 0.6 * velocity;            // 0..1
+  for (let i = 0; i < period; i++){
+    const white = Math.random() * 2 - 1;
+    lp += bright * (white - lp);
+    delay[i] = lp;
+  }
+  // pick-position comb filter (~1/7 along the string)
+  const pick = Math.max(1, Math.round(period / 7));
+  for (let i = period - 1; i >= pick; i--) delay[i] -= 0.9 * delay[i - pick];
+
+  // --- run the loop ---
+  // damping: higher strings decay faster naturally
+  const decay = Math.pow(0.998, 110 / freq) * 0.9965;
+  const dampMix = 0.5;                              // 2-point averaging lowpass
+  let idx = 0, prev = 0;
+  for (let i = 0; i < n; i++){
+    const cur = delay[idx];
+    out[i] = cur;
+    // averaged + damped feedback (Karplus–Strong)
+    delay[idx] = decay * (dampMix * cur + (1 - dampMix) * prev);
+    prev = cur;
+    idx = (idx + 1) % period;
+  }
+
+  // gentle fade-out to silence
+  const tail = Math.min(n, Math.floor(sr * 0.08));
+  for (let i = 0; i < tail; i++) out[n - 1 - i] *= i / tail;
+  return buf;
+}
+
+const activeVoices = new Map();   // stringIndex -> {src, gain}
+
+function pluck(index, velocity){
+  ensureAudio();
+  const s = STRINGS[index];
+  velocity = Math.min(1, Math.max(0.15, velocity));
+
+  // re-plucking a ringing string mutes the previous vibration quickly
+  const old = activeVoices.get(index);
+  if (old){
+    const t = ctx.currentTime;
+    old.gain.gain.cancelScheduledValues(t);
+    old.gain.gain.setValueAtTime(old.gain.gain.value, t);
+    old.gain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+    old.src.stop(t + 0.05);
+  }
+
+  const src = ctx.createBufferSource();
+  src.buffer = renderPluck(s.freq, velocity);
+  // tiny random detune for organic feel
+  src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.0035;
+
+  const gain = ctx.createGain();
+  gain.gain.value = 0.25 + 0.55 * velocity;
+
+  // slight stereo spread: low strings left, high strings right
+  const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+  if (pan){
+    pan.pan.value = (index / (STRINGS.length - 1) - 0.5) * 0.5;
+    src.connect(gain).connect(pan).connect(master);
+  } else {
+    src.connect(gain).connect(master);
+  }
+
+  src.start();
+  activeVoices.set(index, { src, gain });
+  src.onended = () => { if (activeVoices.get(index)?.src === src) activeVoices.delete(index); };
+
+  animateString(index, velocity, s.freq);
+  hideHint();
+}
+
+/* ---------------- Visual vibration ---------------- */
+const vibTimers = new Array(STRINGS.length).fill(null);
+function animateString(index, velocity, freq){
+  const row = rows[index];
+  const amp = (2 + velocity * 4).toFixed(1);
+  row.style.setProperty("--amp", amp + "px");
+  row.style.setProperty("--vib-dur", Math.max(40, 9000 / freq).toFixed(0) + "ms");
+  row.classList.remove("vibrating");
+  void row.offsetWidth;                 // restart animation
+  row.classList.add("vibrating");
+  clearTimeout(vibTimers[index]);
+  const ring = 600 + (220 / freq) * 2200 * velocity;
+  vibTimers[index] = setTimeout(() => row.classList.remove("vibrating"), ring);
+}
+
+/* ---------------- Pointer interaction (mouse + touch, multi-touch) ---------------- */
+const guitar = document.getElementById("guitar");
+const pointers = new Map();   // pointerId -> { y, t }
+
+function stringIndexAtY(clientY){
+  const rect = guitar.getBoundingClientRect();
+  const rel = (clientY - rect.top) / rect.height * 100;
+  let best = -1, bestDist = 5.5;        // % hit tolerance
+  for (let i = 0; i < STRINGS.length; i++){
+    const y = TOP + (BOTTOM - TOP) * i / (STRINGS.length - 1);
+    const d = Math.abs(rel - y);
+    if (d < bestDist){ bestDist = d; best = i; }
+  }
+  return best;
+}
+
+function yToPercent(clientY){
+  const rect = guitar.getBoundingClientRect();
+  return (clientY - rect.top) / rect.height * 100;
+}
+
+guitar.addEventListener("pointerdown", e => {
+  ensureAudio();
+  guitar.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { y: e.clientY, t: performance.now() });
+  const idx = stringIndexAtY(e.clientY);
+  if (idx >= 0) pluck(idx, 0.75);
+});
+
+guitar.addEventListener("pointermove", e => {
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  const now = performance.now();
+  const prevPct = yToPercent(p.y);
+  const curPct = yToPercent(e.clientY);
+  if (prevPct === curPct) return;
+
+  // strum: pluck every string whose line was crossed between prev and current y
+  const lo = Math.min(prevPct, curPct), hi = Math.max(prevPct, curPct);
+  const dt = Math.max(8, now - p.t);
+  const speed = Math.abs(curPct - prevPct) / dt;          // %/ms
+  const velocity = Math.min(1, 0.25 + speed * 9);
+
+  for (let i = 0; i < STRINGS.length; i++){
+    const y = TOP + (BOTTOM - TOP) * i / (STRINGS.length - 1);
+    if (y > lo && y <= hi) pluck(i, velocity);
+  }
+  pointers.set(e.pointerId, { y: e.clientY, t: now });
+});
+
+function endPointer(e){
+  pointers.delete(e.pointerId);
+}
+guitar.addEventListener("pointerup", endPointer);
+guitar.addEventListener("pointercancel", endPointer);
+guitar.addEventListener("lostpointercapture", endPointer);
+
+// prevent page scroll / pinch zoom while playing on mobile
+["touchstart","touchmove"].forEach(ev =>
+  guitar.addEventListener(ev, e => e.preventDefault(), { passive:false }));
+
+/* ---------------- Keyboard bonus: keys 1–6 pluck strings ---------------- */
+window.addEventListener("keydown", e => {
+  if (e.repeat) return;
+  const k = parseInt(e.key, 10);
+  if (k >= 1 && k <= 6) pluck(k - 1, 0.8);
+});
+
+/* ---------------- Hint ---------------- */
+let hintHidden = false;
+function hideHint(){
+  if (hintHidden) return;
+  hintHidden = true;
+  document.getElementById("hint").classList.add("hide");
+}
+</script>
+</body>
+</html>

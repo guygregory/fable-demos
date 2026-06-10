@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microsoft Campus — Thames Valley Park, Reading</title>
+<style>
+  :root{
+    --panel: rgba(16,22,30,.78);
+    --panel-border: rgba(255,255,255,.12);
+    --accent:#0078d4;
+    --text:#e8eef4;
+    --muted:#9fb0c0;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{ height:100%; overflow:hidden; background:#0a0f16;
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif; color:var(--text); }
+  canvas{ display:block; }
+
+  .panel{
+    position:fixed; z-index:10; background:var(--panel);
+    border:1px solid var(--panel-border); border-radius:12px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.35);
+  }
+  #hud{ top:14px; left:14px; max-width:330px; }
+  #hud h1{ font-size:14.5px; font-weight:600; letter-spacing:.2px; display:flex; align-items:center; gap:8px; }
+  #hud h1 .mslogo{ display:inline-grid; grid-template-columns:7px 7px; grid-gap:1.5px; }
+  #hud h1 .mslogo i{ width:7px; height:7px; display:block; }
+  #hud .sub{ font-size:11px; color:var(--muted); margin-top:2px; }
+  #wxline{ margin-top:9px; font-size:13px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  #wxline .big{ font-size:21px; }
+  #clock{ font-variant-numeric:tabular-nums; font-weight:600; }
+  .badge{ font-size:9.5px; font-weight:700; letter-spacing:.8px; padding:2px 7px; border-radius:99px;
+    text-transform:uppercase; }
+  .badge.live{ background:#1c7a3a; color:#d9ffe5; }
+  .badge.offline{ background:#7a3a1c; color:#ffe5d9; }
+  .badge.manual{ background:#41506b; color:#dbe6ff; }
+
+  #controls{ bottom:14px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column;
+    gap:9px; min-width:540px; max-width:92vw; }
+  .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .row .lbl{ font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px;
+    width:58px; flex-shrink:0; }
+  button{
+    background:rgba(255,255,255,.07); color:var(--text); border:1px solid var(--panel-border);
+    border-radius:8px; padding:5px 11px; font-size:12px; cursor:pointer; font-family:inherit;
+    transition:background .15s,border-color .15s;
+  }
+  button:hover{ background:rgba(255,255,255,.14); }
+  button.active{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  input[type=range]{ flex:1; accent-color:var(--accent); min-width:120px; }
+  #timeval{ font-size:12px; font-variant-numeric:tabular-nums; width:46px; text-align:right; }
+
+  #help{ bottom:14px; right:14px; font-size:11px; color:var(--muted); max-width:200px; line-height:1.5; }
+  #loading{ position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+    background:#0a0f16; flex-direction:column; gap:14px; transition:opacity .6s; }
+  #loading.done{ opacity:0; pointer-events:none; }
+  #loading .mslogo{ display:grid; grid-template-columns:22px 22px; grid-gap:4px; }
+  #loading .mslogo i{ width:22px; height:22px; }
+  #loading p{ color:var(--muted); font-size:13px; }
+  .sq1{ background:#f25022; } .sq2{ background:#7fba00; } .sq3{ background:#00a4ef; } .sq4{ background:#ffb900; }
+  @media (max-width:640px){ #controls{ min-width:0; width:94vw; } #help{ display:none; } }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="mslogo"><i class="sq1"></i><i class="sq2"></i><i class="sq3"></i><i class="sq4"></i></div>
+  <p>Building Thames Valley Park…</p>
+</div>
+
+<div id="hud" class="panel">
+  <h1><span class="mslogo"><i class="sq1"></i><i class="sq2"></i><i class="sq3"></i><i class="sq4"></i></span>
+    Microsoft Campus — Thames Valley Park</h1>
+  <div class="sub">Building 1 (UK HQ), Reading RG6 · 51.4615°N 0.9265°W</div>
+  <div id="wxline">
+    <span class="big" id="wxicon">⛅</span>
+    <span id="wxtemp">—</span>
+    <span id="wxdesc">fetching weather…</span>
+    <span id="clock">--:--</span>
+    <span class="badge manual" id="srcbadge">…</span>
+  </div>
+</div>
+
+<div id="controls" class="panel">
+  <div class="row">
+    <span class="lbl">Time</span>
+    <button id="btn-livetime" class="active">Live</button>
+    <input type="range" id="timeslider" min="0" max="1439" step="1" value="720">
+    <span id="timeval">12:00</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Weather</span>
+    <button data-wx="live" class="wxbtn active">Live</button>
+    <button data-wx="clear" class="wxbtn">Clear</button>
+    <button data-wx="partly" class="wxbtn">Partly</button>
+    <button data-wx="overcast" class="wxbtn">Overcast</button>
+    <button data-wx="fog" class="wxbtn">Fog</button>
+    <button data-wx="rain" class="wxbtn">Rain</button>
+    <button data-wx="snow" class="wxbtn">Snow</button>
+    <button data-wx="storm" class="wxbtn">Storm</button>
+  </div>
+  <div class="row">
+    <span class="lbl">Camera</span>
+    <button data-cam="overview" class="cambtn active">Overview</button>
+    <button data-cam="b1" class="cambtn">Building 1</button>
+    <button data-cam="lake" class="cambtn">Lake</button>
+    <button data-cam="rear" class="cambtn">Rear car park</button>
+    <button id="btn-labels" class="active">Labels</button>
+  </div>
+</div>
+
+<div id="help" class="panel">Drag to orbit · scroll to zoom · right-drag to pan</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================
+   1. RENDERER / SCENE / CAMERA
+   Scene axes: +x = east, +z = south, y = up. Units ≈ metres.
+   TVP Drive runs E–W along the south edge (z≈+130); the five
+   buildings line its north side; rear car park behind them;
+   the lake / nature reserve further north towards the Thames.
+============================================================ */
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 2, 4000);
+camera.position.set(60, 270, 430);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, -10);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 25;
+controls.maxDistance = 750;
+controls.maxPolarAngle = 1.5;
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ============================================================
+   2. LIGHTS
+============================================================ */
+const sun = new THREE.DirectionalLight(0xffffff, 2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -420; sun.shadow.camera.right = 420;
+sun.shadow.camera.top = 420;   sun.shadow.camera.bottom = -420;
+sun.shadow.camera.near = 10;   sun.shadow.camera.far = 1400;
+sun.shadow.bias = -0.0006;
+scene.add(sun, sun.target);
+
+const hemi = new THREE.HemisphereLight(0xbfd4ee, 0x4a5240, 0.6);
+scene.add(hemi);
+
+const moon = new THREE.DirectionalLight(0x8aa6cc, 0);
+moon.position.set(-200, 300, -150);
+scene.add(moon);
+
+scene.fog = new THREE.FogExp2(0x87b5e0, 0.0006);
+
+/* ============================================================
+   3. SHARED MATERIALS, TEXTURES & HELPERS
+============================================================ */
+function makeCanvasTex(w, h, draw, { repeat=null } = {}) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  if (repeat){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
+  return t;
+}
+
+const grassTex = makeCanvasTex(256, 256, (g) => {
+  g.fillStyle = '#74935c'; g.fillRect(0,0,256,256);
+  for (let i=0;i<2600;i++){
+    g.fillStyle = `rgba(${80+Math.random()*40|0},${120+Math.random()*40|0},${60+Math.random()*30|0},.16)`;
+    g.fillRect(Math.random()*256, Math.random()*256, 2+Math.random()*4, 2+Math.random()*4);
+  }
+}, { repeat:[18,14] });
+
+const waterNoise = makeCanvasTex(256, 256, (g) => {
+  g.fillStyle = '#808080'; g.fillRect(0,0,256,256);
+  for (let i=0;i<1400;i++){
+    const v = 110 + Math.random()*60 | 0;
+    g.fillStyle = `rgba(${v},${v},${v+10},.5)`;
+    g.beginPath(); g.arc(Math.random()*256, Math.random()*256, 2+Math.random()*7, 0, 7); g.fill();
+  }
+}, { repeat:[6,4] });
+waterNoise.colorSpace = THREE.NoColorSpace;
+
+const MAT = {
+  grass:   new THREE.MeshStandardMaterial({ map:grassTex, color:0xffffff, roughness:1 }),
+  asphalt: new THREE.MeshStandardMaterial({ color:0x3c4044, roughness:.95 }),
+  lot:     new THREE.MeshStandardMaterial({ color:0x4a4e52, roughness:.95 }),
+  path:    new THREE.MeshStandardMaterial({ color:0xb9b2a4, roughness:.9 }),
+  plaza:   new THREE.MeshStandardMaterial({ color:0xa8a49a, roughness:.85 }),
+  brick:   new THREE.MeshStandardMaterial({ color:0xc9bda4, roughness:.8 }),
+  brickB5: new THREE.MeshStandardMaterial({ color:0xd9dde0, roughness:.55, metalness:.15 }),
+  white:   new THREE.MeshStandardMaterial({ color:0xeceae4, roughness:.6 }),
+  roof:    new THREE.MeshStandardMaterial({ color:0x6e7478, roughness:.7, metalness:.25 }),
+  plant:   new THREE.MeshStandardMaterial({ color:0x8b9094, roughness:.6, metalness:.35 }),
+  stripe:  new THREE.MeshBasicMaterial({ color:0xd8dadc }),
+  dash:    new THREE.MeshBasicMaterial({ color:0xcfd2d4 }),
+  trunk:   new THREE.MeshStandardMaterial({ color:0x6b513a, roughness:1 }),
+  canopy:  new THREE.MeshStandardMaterial({ color:0x4e7a3a, roughness:1 }),
+  hedge:   new THREE.MeshStandardMaterial({ color:0x44663a, roughness:1 }),
+  pole:    new THREE.MeshStandardMaterial({ color:0x8e9499, roughness:.5, metalness:.6 }),
+};
+
+// Glass used on every facade — emissive ramps up after dark.
+const glassMats = [];
+function makeGlass(color=0x2c4a60){
+  const m = new THREE.MeshStandardMaterial({
+    color, metalness:.65, roughness:.18,
+    emissive:0xffd27a, emissiveIntensity:0,
+  });
+  glassMats.push(m);
+  return m;
+}
+const lampGlowMat = new THREE.MeshStandardMaterial({
+  color:0xfff2cf, emissive:0xffdf9a, emissiveIntensity:0 });
+glassMats.push(lampGlowMat); // ramps with the rest
+
+/* Ribbon geometry along a polyline of [x,z] points */
+function curveFrom(pts, tension=0.12){
+  return new THREE.CatmullRomCurve3(
+    pts.map(p => new THREE.Vector3(p[0], 0, p[1])), false, 'centripetal', tension);
+}
+function ribbonMesh(pts, width, y, mat, samples=120){
+  const cv = curveFrom(pts);
+  const sp = cv.getSpacedPoints(samples);
+  const hw = width/2, pos=[], uv=[], idx=[];
+  for (let i=0;i<sp.length;i++){
+    const a = sp[Math.max(0,i-1)], b = sp[Math.min(sp.length-1,i+1)];
+    let dx=b.x-a.x, dz=b.z-a.z; const l=Math.hypot(dx,dz)||1; dx/=l; dz/=l;
+    const nx=-dz, nz=dx, p=sp[i];
+    pos.push(p.x+nx*hw, y, p.z+nz*hw,  p.x-nx*hw, y, p.z-nz*hw);
+    uv.push(0, i/samples*10, 1, i/samples*10);
+  }
+  for (let i=0;i<sp.length-1;i++){
+    const k=i*2; idx.push(k,k+1,k+2, k+1,k+3,k+2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.receiveShadow = true;
+  return m;
+}
+
+/* ============================================================
+   4. GROUND, LAKE, RIVER
+============================================================ */
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 760), MAT.grass);
+ground.rotation.x = -Math.PI/2;
+ground.position.set(0, 0, -30);
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Nature-reserve lake (balancing pond) north of the campus
+const lakeShape = new THREE.Shape();
+const lakePts = [
+  [-220,-185],[-150,-172],[-60,-168],[40,-175],[130,-190],[185,-215],
+  [195,-250],[160,-285],[80,-302],[-20,-308],[-120,-300],[-200,-278],
+  [-238,-245],[-242,-212],
+].map(p => new THREE.Vector2(p[0], -p[1]));   // shape-y mirrors world -z
+lakeShape.setFromPoints(lakePts); lakeShape.closePath();
+const lakeGeo = new THREE.ShapeGeometry(lakeShape, 24);
+lakeGeo.rotateX(-Math.PI/2);                  // shape (x,y) → world (x, -z)
+lakeGeo.computeVertexNormals();
+const waterMat = new THREE.MeshStandardMaterial({
+  color:0x36617c, metalness:.35, roughness:.12,
+  bumpMap:waterNoise, bumpScale:.6,
+});
+const lake = new THREE.Mesh(lakeGeo, waterMat);
+lake.position.y = 0.1;
+scene.add(lake);
+
+// Hint of the River Thames along the north edge
+const river = new THREE.Mesh(new THREE.PlaneGeometry(1000, 64), waterMat);
+river.rotation.x = -Math.PI/2;
+river.position.set(0, 0.1, -378);
+scene.add(river);
+
+/* ============================================================
+   5. ROADS, FOOTPATHS, PARKING
+============================================================ */
+const mainRoadPts = [[-490,130],[-200,130],[0,130],[200,130],[490,130]];
+scene.add(ribbonMesh(mainRoadPts, 10, 0.2, MAT.asphalt, 60));
+
+const westSpur = [[-308,130],[-330,118],[-338,70],[-338,-40],[-330,-95],[-308,-126],[-280,-130]];
+const eastSpur = [[280,-130],[312,-126],[330,-95],[338,-40],[338,70],[330,118],[308,130]];
+const rearRoad = [[-280,-130],[-150,-130],[0,-130],[150,-130],[280,-130]];
+scene.add(ribbonMesh(westSpur, 8, 0.2, MAT.asphalt, 80));
+scene.add(ribbonMesh(eastSpur, 8, 0.2, MAT.asphalt, 80));
+scene.add(ribbonMesh(rearRoad, 8, 0.2, MAT.asphalt, 50));
+
+// Centre-line dashes (single instanced mesh for all roads)
+const dashMatrices = [];
+function addDashes(pts, every=12){
+  const cv = curveFrom(pts);
+  const len = cv.getLength(), n = Math.floor(len/every);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0,1,0);
+  for (let i=0;i<n;i++){
+    const t = (i+0.5)/n;
+    const p = cv.getPointAt(t), tan = cv.getTangentAt(t);
+    q.setFromAxisAngle(up, Math.atan2(-tan.z, tan.x));
+    m.compose(new THREE.Vector3(p.x, 0.26, p.z), q, new THREE.Vector3(1,1,1));
+    dashMatrices.push(m.clone());
+  }
+}
+addDashes(mainRoadPts); addDashes(westSpur); addDashes(eastSpur); addDashes(rearRoad);
+
+// Footpaths: behind the buildings, around the lake, down to the Thames Path
+const pathBehind = [[-300,-32],[-180,-30],[-60,-30],[60,-30],[180,-30],[290,-34]];
+const pathToLake = [[-40,-30],[-44,-80],[-40,-130],[-36,-160],[-30,-178]];
+const lakeLoop = [
+  [-220,-178],[-120,-162],[-20,-158],[90,-166],[170,-182],[205,-220],
+  [200,-262],[150,-296],[60,-314],[-50,-318],[-150,-310],[-220,-288],
+  [-252,-248],[-250,-208],[-220,-178],
+];
+const pathThames = [[-30,-318],[-26,-340],[-24,-360]];
+scene.add(ribbonMesh(pathBehind, 3, 0.26, MAT.path, 60));
+scene.add(ribbonMesh(pathToLake, 2.6, 0.26, MAT.path, 40));
+scene.add(ribbonMesh(lakeLoop, 2.6, 0.26, MAT.path, 160));
+scene.add(ribbonMesh(pathThames, 2.6, 0.26, MAT.path, 16));
+
+// ---- Parking lots ----
+const stripeMatrices = [];   // all bay markings, one instanced mesh
+const bays = [];             // {x,z,rotY} for static parked cars
+function parkingLot(cx, cz, w, nAisles){
+  const moduleD = 17;                       // 5m bay + 7m aisle + 5m bay
+  const d = nAisles*moduleD + 4;
+  const lot = new THREE.Mesh(new THREE.PlaneGeometry(w, d), MAT.lot);
+  lot.rotation.x = -Math.PI/2;
+  lot.position.set(cx, 0.14, cz);
+  lot.receiveShadow = true;
+  scene.add(lot);
+  const m = new THREE.Matrix4();
+  const zStart = cz - d/2 + 2;
+  for (let a=0; a<nAisles; a++){
+    const rowTop = zStart + a*moduleD + 2.5;      // bay row north of aisle
+    const rowBot = zStart + a*moduleD + 14.5;     // bay row south of aisle
+    for (const [rowZ, rot] of [[rowTop, Math.PI/2],[rowBot, -Math.PI/2]]){
+      const nStripes = Math.floor((w-6)/2.7);
+      const x0 = cx - (nStripes-1)*2.7/2;
+      for (let i=0;i<nStripes;i++){
+        m.makeTranslation(x0 + i*2.7, 0.18, rowZ);
+        m.multiply(new THREE.Matrix4().makeScale(0.9, 1, 27));
+        stripeMatrices.push(m.clone());
+        if (i < nStripes-1) bays.push({ x:x0+i*2.7+1.35, z:rowZ, rotY:rot });
+      }
+    }
+  }
+  return { aisleZ: zStart + 8.5 }; // first aisle centreline
+}
+
+// One car park in front of each of the five buildings
+const BX = [-250, -130, -10, 110, 245];   // building x positions, B1 westmost
+const frontAisles = [];
+for (const bx of BX) frontAisles.push(parkingLot(bx, 78, 86, 1).aisleZ);
+// Large rear car park behind the campus
+const rearLot = parkingLot(-40, -85, 440, 2);
+
+// Lot entrance stubs (connect lots to roads)
+for (const bx of BX) scene.add(ribbonMesh([[bx+40,126],[bx+43,108],[bx+43,92]], 6, 0.2, MAT.asphalt, 12));
+for (const bx of BX) scene.add(ribbonMesh([[bx-43,92],[bx-43,108],[bx-40,126]], 6, 0.2, MAT.asphalt, 12));
+scene.add(ribbonMesh([[-200,-128],[-200,-110],[-200,-95]], 6, 0.2, MAT.asphalt, 10));
+scene.add(ribbonMesh([[140,-95],[140,-110],[140,-128]], 6, 0.2, MAT.asphalt, 10));
+
+/* ============================================================
+   6. BUILDINGS
+============================================================ */
+const boxGeo = new THREE.BoxGeometry(1,1,1);
+function box(mat, w,h,d, x,y,z, parent, shadows=true){
+  const m = new THREE.Mesh(boxGeo, mat);
+  m.scale.set(w,h,d); m.position.set(x,y,z);
+  if (shadows){ m.castShadow = true; m.receiveShadow = true; }
+  parent.add(m);
+  return m;
+}
+
+const msLogoColors = ['#f25022','#7fba00','#00a4ef','#ffb900'];
+function drawMsLogo(g, x, y, s, gap){
+  const o = [[0,0],[s+gap,0],[0,s+gap],[s+gap,s+gap]];
+  o.forEach(([ox,oy],i)=>{ g.fillStyle = msLogoColors[i]; g.fillRect(x+ox, y+oy, s, s); });
+}
+
+const signTex = makeCanvasTex(1024, 256, (g)=>{
+  drawMsLogo(g, 40, 48, 76, 8);
+  g.fillStyle = '#f4f6f8';
+  g.font = '600 128px "Segoe UI", system-ui, sans-serif';
+  g.textBaseline = 'middle';
+  g.fillText('Microsoft', 240, 134);
+});
+const flagTex = makeCanvasTex(512, 320, (g)=>{
+  g.fillStyle = '#f7f9fb'; g.fillRect(0,0,512,320);
+  drawMsLogo(g, 60, 96, 60, 7);
+  g.fillStyle = '#5e5e5e';
+  g.font = '600 84px "Segoe UI", system-ui, sans-serif';
+  g.textBaseline = 'middle';
+  g.fillText('Microsoft', 212, 166);
+});
+
+const labels = [];
+function addLabel(text, x, y, z){
+  const tex = makeCanvasTex(512, 144, (g)=>{
+    g.fillStyle = 'rgba(12,18,26,.72)';
+    g.beginPath(); g.roundRect(16,16,480,112,28); g.fill();
+    g.fillStyle = '#e8eef4'; g.font = '600 62px "Segoe UI", system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, 256, 76);
+  });
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
+  sp.scale.set(30, 8.4, 1);
+  sp.position.set(x, y, z);
+  sp.renderOrder = 5;
+  scene.add(sp); labels.push(sp);
+}
+
+/* Late-90s TVP block: buff brick, banded glazing, glazed barrel atrium */
+function tvpBuilding({ x, z, w=58, d=40, floors=3, hero=false }){
+  const g = new THREE.Group();
+  const fh = 3.7, h = floors*fh;
+  const glass = makeGlass(hero ? 0x2c4f6e : 0x2c4a60);
+
+  box(MAT.brick, w, h, d, 0, h/2, 0, g);
+  for (let f=0; f<floors; f++)
+    box(glass, w+0.18, 1.7, d+0.18, 0, f*fh+2.2, 0, g, false);
+  box(MAT.white, w+0.5, 0.55, d+0.5, 0, h+0.27, 0, g);            // parapet band
+  box(MAT.roof,  w-2,   0.4,  d-2,   0, h+0.6,  0, g, false);     // roof deck
+  box(MAT.plant, w*0.32, 2.3, d*0.38, -w*0.18, h+1.7, -d*0.1, g); // rooftop plant
+  box(MAT.plant, w*0.16, 1.7, d*0.2,   w*0.24, h+1.4,  d*0.12, g);
+
+  // Glazed half-drum atrium on the south (entrance) face
+  const r = hero ? 10 : 8;
+  const atr = new THREE.Mesh(
+    new THREE.CylinderGeometry(r, r, h+1.2, 28, 1, true, -Math.PI/2, Math.PI),
+    makeGlass(0x35597a));
+  atr.position.set(0, (h+1.2)/2, d/2);
+  atr.castShadow = true;
+  g.add(atr);
+  const atrCap = new THREE.Mesh(new THREE.CircleGeometry(r, 28, Math.PI, Math.PI), MAT.white);
+  atrCap.rotation.x = -Math.PI/2;
+  atrCap.position.set(0, h+1.21, d/2);
+  g.add(atrCap);
+
+  // Entrance canopy + plaza
+  box(MAT.white, 14, 0.35, 6, 0, 3.4, d/2 + r*0.86, g);
+  const plaza = new THREE.Mesh(new THREE.PlaneGeometry(w*0.8, 16), MAT.plaza);
+  plaza.rotation.x = -Math.PI/2;
+  plaza.position.set(0, 0.15, d/2 + 9);
+  plaza.receiveShadow = true;
+  g.add(plaza);
+
+  if (hero){
+    // Microsoft sign on the facade
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(20, 5),
+      new THREE.MeshBasicMaterial({ map:signTex, transparent:true }));
+    sign.position.set(-w/2 + 14, h - 2.4, d/2 + 0.15);
+    g.add(sign);
+    // Flagpole + Microsoft flag on the roof
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 11, 10), MAT.pole);
+    pole.position.set(w/2 - 5, h + 5.5, -d/2 + 6);
+    pole.castShadow = true;
+    g.add(pole);
+    const fg = new THREE.PlaneGeometry(7, 3.6, 22, 10);
+    fg.translate(3.5, 0, 0);
+    flag = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({
+      map:flagTex, side:THREE.DoubleSide, roughness:.85 }));
+    flag.position.set(w/2 - 5, h + 9, -d/2 + 6);
+    flag.castShadow = true;
+    g.add(flag);
+    flagBase = fg.attributes.position.array.slice();
+  }
+
+  g.position.set(x, 0, z);
+  scene.add(g);
+  return g;
+}
+
+/* Building 5 — later, glassier block with a curved standing-seam roof */
+function building5(x, z){
+  const g = new THREE.Group();
+  const w=72, d=46, h=17.5;
+  const glass = makeGlass(0x3a5e80);
+  box(glass, w, h, d, 0, h/2, 0, g);
+  for (let f=0; f<5; f++) box(MAT.brickB5, w+0.3, 0.5, d+0.3, 0, f*3.5+3.4, 0, g, false);
+  box(MAT.brickB5, 3, h, d+0.4, -w/2+1.5, h/2, 0, g);
+  box(MAT.brickB5, 3, h, d+0.4,  w/2-1.5, h/2, 0, g);
+  // Curved roof: half-cylinder, axis along x, flattened
+  const rg = new THREE.CylinderGeometry(d/2, d/2, w, 36, 1, true, -Math.PI/2, Math.PI);
+  rg.rotateZ(Math.PI/2); rg.rotateX(-Math.PI/2);
+  rg.scale(1, 0.32, 1);
+  const roof = new THREE.Mesh(rg, MAT.roof);
+  roof.position.y = h; roof.castShadow = true;
+  g.add(roof);
+  for (const sx of [-1,1]){
+    const cap = new THREE.CircleGeometry(d/2, 24, 0, Math.PI);
+    cap.scale(1, 0.32, 1); cap.rotateY(sx*Math.PI/2);
+    const cm = new THREE.Mesh(cap, MAT.brickB5);
+    cm.position.set(sx*w/2, h, 0);
+    g.add(cm);
+  }
+  const plaza = new THREE.Mesh(new THREE.PlaneGeometry(w*0.7, 14), MAT.plaza);
+  plaza.rotation.x = -Math.PI/2;
+  plaza.position.set(0, 0.15, d/2 + 8);
+  plaza.receiveShadow = true;
+  g.add(plaza);
+  g.position.set(x, 0, z);
+  scene.add(g);
+  return g;
+}
+
+let flag = null, flagBase = null;
+tvpBuilding({ x:BX[0], z:0, w:62, d:42, floors:4, hero:true });   // Building 1 — HQ
+tvpBuilding({ x:BX[1], z:0, w:56, d:40, floors:3 });
+tvpBuilding({ x:BX[2], z:0, w:60, d:40, floors:3 });
+tvpBuilding({ x:BX[3], z:0, w:56, d:40, floors:3 });
+building5(BX[4], -2);
+
+addLabel('Building 1 · Microsoft HQ', BX[0], 34, 0);
+addLabel('Building 2', BX[1], 27, 0);
+addLabel('Building 3', BX[2], 27, 0);
+addLabel('Building 4', BX[3], 27, 0);
+addLabel('Building 5', BX[4], 32, -2);
+addLabel('Nature reserve', -30, 14, -240);
+addLabel('Rear car park', -40, 14, -85);
+
+/* ============================================================
+   7. LANDSCAPING — trees, hedges, lamps (instanced)
+============================================================ */
+const treePos = [];
+function scatter(cx, cz, w, d, n, rnd){
+  for (let i=0;i<n;i++)
+    treePos.push([cx + (rnd()-.5)*w, cz + (rnd()-.5)*d, 0.7 + rnd()*0.7]);
+}
+let seed = 7;
+const rnd = () => (seed = seed*16807 % 2147483647) / 2147483647;
+scatter(0, 152, 880, 16, 46, rnd);          // south verge of TVP Drive
+scatter(-40, -152, 560, 24, 30, rnd);       // between rear road and lake
+scatter(-300, -240, 120, 160, 22, rnd);     // west of lake
+scatter(150, -290, 260, 90, 20, rnd);       // east of lake
+scatter(-395, 0, 90, 480, 26, rnd);         // west edge
+scatter(400, 0, 90, 480, 26, rnd);          // east edge
+scatter(0, -345, 700, 30, 26, rnd);         // Thames bank
+for (let i=0;i<BX.length-1;i++)             // gaps between front lots
+  scatter((BX[i]+BX[i+1])/2, 78, 22, 30, 5, rnd);
+// keep trees out of the lake
+const lakeBox = { x0:-250, x1:200, z0:-315, z1:-160 };
+const treesFiltered = treePos.filter(p =>
+  !(p[0]>lakeBox.x0 && p[0]<lakeBox.x1 && p[1]>lakeBox.z0 && p[1]<lakeBox.z1));
+
+const trunkIM = new THREE.InstancedMesh(
+  new THREE.CylinderGeometry(0.25, 0.4, 2.6, 6), MAT.trunk, treesFiltered.length);
+const canopyIM = new THREE.InstancedMesh(
+  new THREE.IcosahedronGeometry(2.4, 1), MAT.canopy, treesFiltered.length);
+canopyIM.castShadow = true;
+{
+  const m = new THREE.Matrix4(), c = new THREE.Color();
+  treesFiltered.forEach((p, i) => {
+    const s = p[2];
+    m.makeTranslation(p[0], 1.3*s, p[1]); m.multiply(new THREE.Matrix4().makeScale(s,s,s));
+    trunkIM.setMatrixAt(i, m);
+    m.makeTranslation(p[0], (2.6+1.6)*s, p[1]);
+    m.multiply(new THREE.Matrix4().makeScale(s, s*(1+rnd()*0.4), s));
+    canopyIM.setMatrixAt(i, m);
+    canopyIM.setColorAt(i, c.setHSL(0.27 + rnd()*0.06, 0.42, 0.3 + rnd()*0.12));
+  });
+  canopyIM.instanceColor.needsUpdate = true;
+}
+scene.add(trunkIM, canopyIM);
+
+// Hedges screening the front car parks from the road
+for (const bx of BX) box(MAT.hedge, 70, 1.3, 1.6, bx, 0.65, 96, scene);
+
+// Street lamps
+const lampPts = [];
+for (let x=-440; x<=440; x+=70) lampPts.push([x, 123]);
+for (let x=-260; x<=260; x+=80) lampPts.push([x, -123]);
+for (const bx of BX) lampPts.push([bx-30, 70], [bx+30, 70]);
+lampPts.push([-200,-85],[-80,-85],[40,-85],[160,-85]);
+const lampPoleIM = new THREE.InstancedMesh(
+  new THREE.CylinderGeometry(0.09, 0.13, 6.4, 6), MAT.pole, lampPts.length);
+const lampHeadIM = new THREE.InstancedMesh(
+  new THREE.SphereGeometry(0.34, 8, 6), lampGlowMat, lampPts.length);
+{
+  const m = new THREE.Matrix4();
+  lampPts.forEach((p, i) => {
+    m.makeTranslation(p[0], 3.2, p[1]); lampPoleIM.setMatrixAt(i, m);
+    m.makeTranslation(p[0], 6.5, p[1]); lampHeadIM.setMatrixAt(i, m);
+  });
+}
+scene.add(lampPoleIM, lampHeadIM);
+
+// Bay stripes + road dashes (instanced)
+const stripeIM = new THREE.InstancedMesh(
+  new THREE.BoxGeometry(0.14, 0.02, 0.18), MAT.stripe, stripeMatrices.length);
+stripeMatrices.forEach((m, i) => stripeIM.setMatrixAt(i, m));
+scene.add(stripeIM);
+const dashIM = new THREE.InstancedMesh(
+  new THREE.BoxGeometry(3.2, 0.02, 0.22), MAT.dash, dashMatrices.length);
+dashMatrices.forEach((m, i) => dashIM.setMatrixAt(i, m));
+scene.add(dashIM);
+
+/* ============================================================
+   8. CARS — static parked + animated arrivals/departures
+============================================================ */
+const carColors = [0xc0c5cc, 0x2b3035, 0x7d858c, 0x8a1f1f, 0x1f3c8a, 0x3a3f44, 0xd8d8d8, 0x4a6741];
+const carLightMats = [];   // headlight/taillight emissives, ramp at night
+
+function makeCar(color){
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness:.35, metalness:.55 });
+  const glassMat = new THREE.MeshStandardMaterial({ color:0x1c2630, roughness:.15, metalness:.6 });
+  box(bodyMat, 4.3, 0.7, 1.9, 0, 0.62, 0, g);
+  box(glassMat, 2.2, 0.55, 1.7, -0.25, 1.2, 0, g);
+  const wheelGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.3, 10);
+  wheelGeo.rotateX(Math.PI/2);
+  const wheelMat = new THREE.MeshStandardMaterial({ color:0x16181a, roughness:.9 });
+  for (const [wx, wz] of [[1.35,0.95],[1.35,-0.95],[-1.35,0.95],[-1.35,-0.95]]){
+    const w = new THREE.Mesh(wheelGeo, wheelMat);
+    w.position.set(wx, 0.33, wz);
+    g.add(w);
+  }
+  const head = new THREE.MeshStandardMaterial({ color:0xfff6d8, emissive:0xfff1c0, emissiveIntensity:0 });
+  const tail = new THREE.MeshStandardMaterial({ color:0x5a1010, emissive:0xff2a1a, emissiveIntensity:0 });
+  carLightMats.push(head, tail);
+  box(head, 0.1, 0.22, 0.5, 2.16, 0.66, 0.6, g, false);
+  box(head, 0.1, 0.22, 0.5, 2.16, 0.66, -0.6, g, false);
+  box(tail, 0.1, 0.2, 0.45, -2.16, 0.7, 0.62, g, false);
+  box(tail, 0.1, 0.2, 0.45, -2.16, 0.7, -0.62, g, false);
+  g.traverse(o => { if (o.isMesh){ o.castShadow = true; } });
+  return g;
+}
+
+// Static parked cars in random bays, distributed across every lot
+{
+  let i = 0;
+  for (const b of bays){
+    if (rnd() < 0.115 && i < 110){
+      const c = makeCar(carColors[(i*5) % carColors.length]);
+      c.position.set(b.x, 0.16, b.z);
+      c.rotation.y = b.rotY + (rnd()-0.5)*0.04;
+      scene.add(c);
+      i++;
+    }
+  }
+}
+
+/* Animated cars follow CatmullRom routes; each pauses mid-route
+   (in a car-park aisle) as if parking, then drives on. */
+function frontLotRoute(bx, aisleZ){
+  return [
+    [480,128],[bx+90,128],[bx+48,122],[bx+43,104],[bx+40,aisleZ+6],[bx+30,aisleZ],
+    [bx,aisleZ],                       // ← pause here
+    [bx-30,aisleZ],[bx-40,aisleZ+6],[bx-43,104],[bx-48,122],[bx-90,131],[-480,131],
+  ];
+}
+const rearAisle = rearLot.aisleZ; // first (north) aisle of rear lot
+function rearRoute(pauseX){
+  return [
+    [480,128],[330,124],[336,70],[338,-40],[330,-100],[310,-126],[200,-130],[140,-126],
+    [140,-100],[130,rearAisle],
+    [pauseX,rearAisle],                // ← pause here
+    [-180,rearAisle],[-200,-100],[-200,-126],[-260,-131],[-310,-128],[-334,-90],
+    [-338,0],[-334,80],[-322,120],[-300,130],[-480,130],
+  ];
+}
+const passRouteW = [[480,127.5],[200,127.5],[-200,127.5],[-480,127.5]];
+const passRouteE = [[-480,132.5],[-200,132.5],[200,132.5],[480,132.5]];
+
+const animCars = [];
+function addAnimCar(routePts, color, { speed=9, pausePt=null, pauseDur=6, phase=0 }){
+  const curve = curveFrom(routePts, 0.08);
+  const len = curve.getLength();
+  let pauseT = -1;
+  if (pausePt){
+    // find arc-length fraction closest to the pause waypoint
+    let best = 1e9;
+    for (let t=0; t<=1; t+=0.002){
+      const p = curve.getPointAt(t);
+      const d = (p.x-pausePt[0])**2 + (p.z-pausePt[1])**2;
+      if (d < best){ best = d; pauseT = t; }
+    }
+  }
+  const mesh = makeCar(color);
+  scene.add(mesh);
+  animCars.push({ curve, len, mesh, speed, pauseT, pauseDur, t:phase, waiting:0, paused:false });
+}
+
+addAnimCar(frontLotRoute(BX[0], frontAisles[0]), 0x1f3c8a, { pausePt:[BX[0], frontAisles[0]], phase:0.05 });
+addAnimCar(frontLotRoute(BX[2], frontAisles[2]), 0xc0c5cc, { pausePt:[BX[2], frontAisles[2]], phase:0.45, pauseDur:9 });
+addAnimCar(frontLotRoute(BX[3], frontAisles[3]), 0x8a1f1f, { pausePt:[BX[3], frontAisles[3]], phase:0.75, pauseDur:5 });
+addAnimCar(frontLotRoute(BX[4], frontAisles[4]), 0x3a3f44, { pausePt:[BX[4], frontAisles[4]], phase:0.3, pauseDur:7 });
+addAnimCar(rearRoute(-60),  0x2b3035, { pausePt:[-60, rearAisle], phase:0.1, pauseDur:8, speed:10 });
+addAnimCar(rearRoute(40),   0xd8d8d8, { pausePt:[40, rearAisle],  phase:0.6, pauseDur:6, speed:8.5 });
+addAnimCar(passRouteW, 0x4a6741, { speed:13, phase:0.2 });
+addAnimCar(passRouteE, 0x7d858c, { speed:12, phase:0.7 });
+
+function updateCars(dt){
+  for (const c of animCars){
+    if (c.paused){
+      c.waiting -= dt;
+      if (c.waiting <= 0){ c.paused = false; c.t = c.pauseT + 0.004; }
+      continue;
+    }
+    c.t += (c.speed * dt) / c.len;
+    if (c.t >= 1){ c.t = 0; c.pausedOnce = false; }
+    if (c.pauseT > 0 && !c.pausedOnce && c.t >= c.pauseT){
+      c.paused = true; c.pausedOnce = true; c.waiting = c.pauseDur;
+      c.t = c.pauseT;
+    }
+    const p = c.curve.getPointAt(Math.min(c.t, 0.9999));
+    const tan = c.curve.getTangentAt(Math.min(c.t, 0.9999));
+    c.mesh.position.set(p.x, 0.16, p.z);
+    c.mesh.rotation.y = Math.atan2(-tan.z, tan.x);
+  }
+}
+
+/* ============================================================
+   9. SKY, CLOUDS, PRECIPITATION
+============================================================ */
+const cloudTex = makeCanvasTex(128, 128, (g)=>{
+  const grad = g.createRadialGradient(64,64,8, 64,64,62);
+  grad.addColorStop(0, 'rgba(255,255,255,.95)');
+  grad.addColorStop(0.55, 'rgba(255,255,255,.5)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0,0,128,128);
+});
+const clouds = [];
+for (let i=0;i<26;i++){
+  const mat = new THREE.SpriteMaterial({ map:cloudTex, transparent:true, opacity:0, depthWrite:false });
+  const sp = new THREE.Sprite(mat);
+  sp.position.set((rnd()-.5)*1100, 130 + rnd()*70, (rnd()-.5)*850);
+  const s = 90 + rnd()*130;
+  sp.scale.set(s, s*0.42, 1);
+  scene.add(sp); clouds.push(sp);
+}
+
+const PRECIP_N = 1600;
+const precipGeo = new THREE.BufferGeometry();
+{
+  const pos = new Float32Array(PRECIP_N*3);
+  for (let i=0;i<PRECIP_N;i++){
+    pos[i*3]   = (Math.random()-.5)*700;
+    pos[i*3+1] = Math.random()*160;
+    pos[i*3+2] = (Math.random()-.5)*600;
+  }
+  precipGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+}
+const precipMat = new THREE.PointsMaterial({
+  color:0x9db4c8, size:0.45, transparent:true, opacity:0.7, depthWrite:false });
+const precip = new THREE.Points(precipGeo, precipMat);
+precip.visible = false;
+scene.add(precip);
+
+/* ============================================================
+   10. TIME / SUN / WEATHER ENGINE
+============================================================ */
+const LAT = 51.4615 * Math.PI/180, LON = -0.9265;
+
+function tzOffsetHours(date){
+  const utc = new Date(date.toLocaleString('en-US', { timeZone:'UTC' }));
+  const loc = new Date(date.toLocaleString('en-US', { timeZone:'Europe/London' }));
+  return (loc - utc) / 36e5;
+}
+function sunPosition(date){
+  const rad = Math.PI/180;
+  const start = Date.UTC(date.getUTCFullYear(), 0, 0);
+  const doy = (date.getTime() - start) / 864e5;
+  const decl = 23.45*rad * Math.sin(2*Math.PI*(284 + doy)/365);
+  const utcH = date.getUTCHours() + date.getUTCMinutes()/60 + date.getUTCSeconds()/3600;
+  const ha = ((utcH + LON/15) - 12) * 15 * rad;
+  const sinE = Math.sin(LAT)*Math.sin(decl) + Math.cos(LAT)*Math.cos(decl)*Math.cos(ha);
+  const elev = Math.asin(sinE);
+  const azim = Math.atan2(Math.sin(ha),
+    Math.cos(ha)*Math.sin(LAT) - Math.tan(decl)*Math.cos(LAT)) + Math.PI; // cw from N
+  return { elev, azim };
+}
+
+/* Weather presets. cloud 0–1, precip 0–1 */
+const WX_PRESETS = {
+  clear:    { cloud:0.05, precip:0, snow:false, fogD:0,      thunder:false, desc:'Clear',        icon:'☀️' },
+  partly:   { cloud:0.45, precip:0, snow:false, fogD:0,      thunder:false, desc:'Partly cloudy',icon:'⛅' },
+  overcast: { cloud:0.97, precip:0, snow:false, fogD:0,      thunder:false, desc:'Overcast',     icon:'☁️' },
+  fog:      { cloud:0.85, precip:0, snow:false, fogD:0.0085, thunder:false, desc:'Fog',          icon:'🌫️' },
+  rain:     { cloud:0.95, precip:0.8, snow:false, fogD:0.0015, thunder:false, desc:'Rain',       icon:'🌧️' },
+  snow:     { cloud:0.9,  precip:0.6, snow:true,  fogD:0.002, thunder:false, desc:'Snow',        icon:'🌨️' },
+  storm:    { cloud:1,    precip:1,  snow:false, fogD:0.0018, thunder:true,  desc:'Thunderstorm',icon:'⛈️' },
+};
+function wmoToPreset(code, cloudPct){
+  let p;
+  if (code === 0) p = { ...WX_PRESETS.clear };
+  else if (code <= 2) p = { ...WX_PRESETS.partly };
+  else if (code === 3) p = { ...WX_PRESETS.overcast };
+  else if (code === 45 || code === 48) p = { ...WX_PRESETS.fog };
+  else if (code >= 51 && code <= 57) p = { ...WX_PRESETS.rain, precip:0.35, desc:'Drizzle' };
+  else if (code >= 61 && code <= 67) p = { ...WX_PRESETS.rain, precip: code >= 65 ? 1 : 0.7 };
+  else if (code >= 71 && code <= 77) p = { ...WX_PRESETS.snow };
+  else if (code >= 80 && code <= 82) p = { ...WX_PRESETS.rain, precip:0.8, desc:'Showers' };
+  else if (code === 85 || code === 86) p = { ...WX_PRESETS.snow, desc:'Snow showers' };
+  else if (code >= 95) p = { ...WX_PRESETS.storm };
+  else p = { ...WX_PRESETS.partly };
+  if (cloudPct != null) p.cloud = Math.max(p.cloud * 0.5, cloudPct/100);
+  return p;
+}
+
+const state = {
+  liveTime: true,
+  manualMinutes: 720,
+  wxMode: 'live',                       // 'live' or a preset key
+  live: null,                           // last Open-Meteo payload
+  wx: { ...WX_PRESETS.partly },
+  windKmh: 12, windDirDeg: 250,
+  flash: 0,
+};
+
+function simDate(){
+  const now = new Date();
+  if (state.liveTime) return now;
+  const off = tzOffsetHours(now);
+  const d = new Date(now);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCMinutes(state.manualMinutes - off*60);
+  return d;
+}
+
+const colA = new THREE.Color(), colB = new THREE.Color(), colC = new THREE.Color();
+const SKY = {
+  day:   new THREE.Color(0x87b5e0),
+  dayOv: new THREE.Color(0x9aa5ad),
+  dusk:  new THREE.Color(0xe09a5e),
+  night: new THREE.Color(0x0b1322),
+};
+function applyEnvironment(){
+  const d = simDate();
+  const { elev, azim } = sunPosition(d);
+  const wx = state.wx;
+  const daylight = THREE.MathUtils.smoothstep(Math.sin(elev), -0.06, 0.18);
+  const duskBand = Math.max(0, 1 - Math.abs(Math.sin(elev)) / 0.22);
+  const night = 1 - daylight;
+
+  // Sun
+  const cosE = Math.cos(elev);
+  sun.position.set(Math.sin(azim)*cosE*600, Math.max(Math.sin(elev), 0.02)*600, -Math.cos(azim)*cosE*600);
+  sun.intensity = daylight * 2.3 * (1 - 0.72*wx.cloud);
+  colA.set(0xfff4e0); colB.set(0xff8a3c);
+  sun.color.copy(colA).lerp(colB, duskBand*0.9);
+  sun.castShadow = sun.intensity > 0.05;
+
+  // Ambient / hemisphere / moon
+  hemi.intensity = 0.12 + daylight*(0.85 - 0.45*wx.cloud);
+  moon.intensity = night * 0.16;
+
+  // Sky + fog colour
+  colA.copy(SKY.day).lerp(SKY.dayOv, wx.cloud);
+  colB.copy(SKY.dusk).lerp(SKY.dayOv, wx.cloud*0.7);
+  colC.copy(colA).lerp(colB, duskBand*0.85).lerp(SKY.night, night);
+  if (state.flash > 0) colC.lerp(new THREE.Color(0xcfd8ff), state.flash*0.7);
+  scene.background = colC;
+  scene.fog.color.copy(colC);
+  scene.fog.density = 0.0005 + wx.fogD + night*0.0002 + wx.precip*0.0006;
+
+  // Night glow: windows, lamps, car lights
+  const glow = night * 0.9 + duskBand*0.2;
+  for (const m of glassMats) m.emissiveIntensity = glow * 0.55;
+  for (const m of carLightMats) m.emissiveIntensity = glow * 2.2;
+
+  // Clouds
+  const cOp = wx.cloud * (0.25 + daylight*0.6);
+  for (const c of clouds){
+    c.material.opacity = cOp;
+    c.material.color.setScalar(0.35 + daylight*0.65 - wx.cloud*0.18*daylight);
+  }
+
+  // Lightning flashes
+  if (wx.thunder && Math.random() < 0.004) state.flash = 1;
+  if (state.flash > 0){
+    hemi.intensity += state.flash * 2.4;
+    state.flash = Math.max(0, state.flash - 0.06);
+  }
+
+  // Water tone follows sky
+  waterMat.color.set(0x36617c).lerp(colC, 0.35);
+
+  // Precipitation visibility
+  precip.visible = wx.precip > 0;
+  precipMat.color.set(wx.snow ? 0xf2f6fa : 0x9db4c8);
+  precipMat.size = wx.snow ? 0.8 : 0.45;
+  precipMat.opacity = 0.25 + wx.precip*0.5;
+}
+
+function updatePrecip(dt){
+  if (!precip.visible) return;
+  const pos = precipGeo.attributes.position;
+  const fall = state.wx.snow ? 9 : 62;
+  const driftX = Math.sin(state.windDirDeg*Math.PI/180) * state.windKmh * 0.12;
+  for (let i=0;i<PRECIP_N;i++){
+    let y = pos.getY(i) - fall*dt*(0.7 + (i%5)*0.12);
+    if (y < 0){
+      y = 140 + Math.random()*30;
+      pos.setX(i, (Math.random()-.5)*700);
+      pos.setZ(i, (Math.random()-.5)*600);
+    }
+    pos.setY(i, y);
+    pos.setX(i, pos.getX(i) + driftX*dt);
+  }
+  pos.needsUpdate = true;
+}
+
+function updateClouds(dt){
+  const v = state.windKmh * 0.12;
+  const dx = Math.sin(state.windDirDeg*Math.PI/180) * v;
+  const dz = -Math.cos(state.windDirDeg*Math.PI/180) * v;
+  for (const c of clouds){
+    c.position.x += dx*dt; c.position.z += dz*dt;
+    if (c.position.x > 600) c.position.x = -600;
+    if (c.position.x < -600) c.position.x = 600;
+    if (c.position.z > 480) c.position.z = -480;
+    if (c.position.z < -480) c.position.z = 480;
+  }
+}
+
+/* ============================================================
+   11. LIVE WEATHER (Open-Meteo, no key, CORS-enabled)
+============================================================ */
+const OM_URL = 'https://api.open-meteo.com/v1/forecast?latitude=51.4615&longitude=-0.9265'
+  + '&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation,is_day'
+  + '&timezone=Europe%2FLondon';
+
+async function fetchWeather(){
+  try {
+    const r = await fetch(OM_URL);
+    if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    state.live = j.current;
+    if (state.wxMode === 'live') applyLiveWeather();
+    updateHud();
+  } catch (e){
+    state.live = null;
+    updateHud();
+  }
+}
+function applyLiveWeather(){
+  if (state.live){
+    state.wx = wmoToPreset(state.live.weather_code, state.live.cloud_cover);
+    state.windKmh = state.live.wind_speed_10m ?? 12;
+    state.windDirDeg = state.live.wind_direction_10m ?? 250;
+  } else {
+    state.wx = { ...WX_PRESETS.partly };
+  }
+}
+fetchWeather();
+setInterval(fetchWeather, 10*60*1000);
+
+/* ============================================================
+   12. UI
+============================================================ */
+const $ = (s) => document.querySelector(s);
+const clockFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone:'Europe/London', hour:'2-digit', minute:'2-digit' });
+
+function updateHud(){
+  const live = state.live;
+  if (state.wxMode === 'live'){
+    if (live){
+      $('#wxtemp').textContent = `${Math.round(live.temperature_2m)}°C`;
+      $('#wxdesc').textContent = `${state.wx.desc} · wind ${Math.round(live.wind_speed_10m)} km/h`;
+      $('#srcbadge').textContent = 'Live'; $('#srcbadge').className = 'badge live';
+    } else {
+      $('#wxtemp').textContent = '—';
+      $('#wxdesc').textContent = 'offline · simulated';
+      $('#srcbadge').textContent = 'Offline'; $('#srcbadge').className = 'badge offline';
+    }
+  } else {
+    $('#wxtemp').textContent = '—';
+    $('#wxdesc').textContent = state.wx.desc + ' (manual)';
+    $('#srcbadge').textContent = 'Manual'; $('#srcbadge').className = 'badge manual';
+  }
+  $('#wxicon').textContent = state.wx.icon ?? '⛅';
+}
+
+$('#timeslider').addEventListener('input', (e)=>{
+  state.liveTime = false;
+  state.manualMinutes = +e.target.value;
+  $('#btn-livetime').classList.remove('active');
+});
+$('#btn-livetime').addEventListener('click', ()=>{
+  state.liveTime = true;
+  $('#btn-livetime').classList.add('active');
+});
+
+document.querySelectorAll('.wxbtn').forEach(b => b.addEventListener('click', ()=>{
+  document.querySelectorAll('.wxbtn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  state.wxMode = b.dataset.wx;
+  if (state.wxMode === 'live') applyLiveWeather();
+  else state.wx = { ...WX_PRESETS[state.wxMode] };
+  updateHud();
+}));
+
+const CAMS = {
+  overview: { pos:[60, 270, 430],  tgt:[0, 0, -10] },
+  b1:       { pos:[-250, 26, 130], tgt:[-250, 12, 0] },
+  lake:     { pos:[-30, 55, -90],  tgt:[-30, 0, -240] },
+  rear:     { pos:[120, 90, 30],   tgt:[-40, 0, -90] },
+};
+let camTween = null;
+document.querySelectorAll('.cambtn').forEach(b => b.addEventListener('click', ()=>{
+  document.querySelectorAll('.cambtn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  const c = CAMS[b.dataset.cam];
+  camTween = {
+    t:0,
+    fromP: camera.position.clone(), toP: new THREE.Vector3(...c.pos),
+    fromT: controls.target.clone(), toT: new THREE.Vector3(...c.tgt),
+  };
+}));
+$('#btn-labels').addEventListener('click', (e)=>{
+  const on = e.target.classList.toggle('active');
+  labels.forEach(l => l.visible = on);
+});
+
+/* ============================================================
+   13. ANIMATION LOOP
+============================================================ */
+const clock = new THREE.Clock();
+let hudTimer = 0;
+
+function tick(){
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.1);
+  const t = clock.elapsedTime;
+
+  // Camera tween
+  if (camTween){
+    camTween.t += dt / 1.4;
+    const k = camTween.t >= 1 ? 1 : 1 - Math.pow(1 - camTween.t, 3);
+    camera.position.lerpVectors(camTween.fromP, camTween.toP, k);
+    controls.target.lerpVectors(camTween.fromT, camTween.toT, k);
+    if (camTween.t >= 1) camTween = null;
+  }
+  controls.update();
+
+  // Flag wave — speed scales with live wind
+  if (flag && flagBase){
+    const p = flag.geometry.attributes.position;
+    const spd = 2.5 + state.windKmh*0.18;
+    const amp = 0.16 + Math.min(state.windKmh, 45)*0.008;
+    for (let i=0;i<p.count;i++){
+      const bx = flagBase[i*3], by = flagBase[i*3+1];
+      const f = bx/7;
+      p.setZ(i, Math.sin(bx*1.3 - t*spd + by*0.5) * amp * f
+              + Math.sin(bx*2.7 - t*spd*1.7) * amp*0.35 * f);
+    }
+    p.needsUpdate = true;
+    flag.geometry.computeVertexNormals();
+  }
+
+  // Water shimmer
+  waterNoise.offset.x = t*0.008;
+  waterNoise.offset.y = t*0.005;
+
+  updateCars(dt);
+  updateClouds(dt);
+  updatePrecip(dt);
+  applyEnvironment();
+
+  hudTimer -= dt;
+  if (hudTimer <= 0){
+    hudTimer = 1;
+    $('#clock').textContent = state.liveTime
+      ? clockFmt.format(new Date())
+      : `${String(Math.floor(state.manualMinutes/60)).padStart(2,'0')}:${String(state.manualMinutes%60).padStart(2,'0')}`;
+    $('#timeval').textContent = $('#clock').textContent;
+    if (state.liveTime){
+      const now = new Date();
+      const off = tzOffsetHours(now);
+      const mins = (now.getUTCHours()+off)*60 + now.getUTCMinutes();
+      $('#timeslider').value = ((mins % 1440) + 1440) % 1440;
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+tick();
+document.getElementById('loading').classList.add('done');
+</script>
+</body>
+</html>
